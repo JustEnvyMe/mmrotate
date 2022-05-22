@@ -5,19 +5,17 @@ _base_ = [
 
 angle_version = 'le90'
 model = dict(
-    type='RoITransformer',
+    type='ReDet',
     backbone=dict(
-        type='ResNet',
+        type='ReResNet',
         depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
-        norm_cfg=dict(type='BN', requires_grad=True),
-        norm_eval=True,
         style='pytorch',
-        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+        pretrained='work_dirs/pretrain/re_resnet50_c8_batch256-25b16846.pth'),
     neck=dict(
-        type='FPN',
+        type='ReFPN',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         num_outs=5),
@@ -41,7 +39,7 @@ model = dict(
     roi_head=dict(
         type='RoITransRoIHead',
         version=angle_version,
-        num_stages=2,  # new param
+        num_stages=2,
         stage_loss_weights=[1, 1],
         bbox_roi_extractor=[
             dict(
@@ -53,9 +51,10 @@ model = dict(
             dict(
                 type='RotatedSingleRoIExtractor',
                 roi_layer=dict(
-                    type='RoIAlignRotated',
+                    type='RiRoIAlignRotated',
                     out_size=7,
-                    sample_num=2,
+                    num_samples=2,
+                    num_orientations=8,
                     clockwise=True),
                 out_channels=256,
                 featmap_strides=[4, 8, 16, 32]),
@@ -63,12 +62,12 @@ model = dict(
         bbox_head=[
             dict(
                 type='RotatedShared2FCBBoxHead',
-                in_channels=256,  # lt roi
-                fc_out_channels=1024,  # lt roi
+                in_channels=256,
+                fc_out_channels=1024,
                 roi_feat_size=7,
                 num_classes=15,
                 bbox_coder=dict(
-                    type='DeltaXYWHAHBBoxCoder',  # hbb
+                    type='DeltaXYWHAHBBoxCoder',
                     angle_range=angle_version,
                     norm_factor=2,
                     edge_swap=True,
@@ -88,7 +87,7 @@ model = dict(
                 roi_feat_size=7,
                 num_classes=15,
                 bbox_coder=dict(
-                    type='DeltaXYWHAOBBoxCoder',  # obb
+                    type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,
                     norm_factor=None,
                     edge_swap=True,
@@ -102,7 +101,6 @@ model = dict(
                     loss_weight=1.0),
                 loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))
         ]),
-    # model training and testing settings
     train_cfg=dict(
         rpn=dict(
             assigner=dict(
@@ -172,7 +170,7 @@ model = dict(
             nms_pre=2000,
             min_bbox_size=0,
             score_thr=0.05,
-            nms=dict(type=angle_version, iou_thr=0.1),
+            nms=dict(iou_thr=0.1),
             max_per_img=2000)))
 
 img_norm_cfg = dict(
@@ -191,9 +189,64 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-data = dict(
-    train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(version=angle_version),
-    test=dict(version=angle_version))
 
-optimizer = dict(lr=0.005)
+# dataset settings
+dataset_type = 'DOTADataset'
+data_root = '../../datasets/DOTA/splited/DOTA-v1.0_1024/'  # 6.120
+data = dict(
+    samples_per_gpu=1,
+    workers_per_gpu=0,
+    train=dict(
+        type=dataset_type,
+        ann_file=data_root + 'train/labelTxt',
+        img_prefix=data_root + 'train/images/',
+        pipeline=train_pipeline, version=angle_version
+    ),
+    val=dict(
+        type=dataset_type,
+        ann_file=data_root + 'val/labelTxt',
+        img_prefix=data_root + 'val/images',
+        version=angle_version
+    ),
+    test=dict(
+        type=dataset_type,
+        ann_file=data_root + 'test/images/',  # specify the images dir
+        img_prefix=data_root + 'test/images',
+        version=angle_version
+    )
+)
+
+# schedule settings
+evaluation = dict(interval=4, metric='mAP')
+checkpoint_config = dict(interval=4)
+
+# optimizer
+optimizer = dict(
+    _delete_=True,
+    type='AdamW',
+    lr=0.005,
+    betas=(0.9, 0.999),
+    weight_decay=0.05,
+    paramwise_cfg=dict(
+        custom_keys={
+            'absolute_pos_embed': dict(decay_mult=0.),
+            'relative_position_bias_table': dict(decay_mult=0.),
+            'norm': dict(decay_mult=0.)
+        }))
+runner = dict(max_epochs=60)
+
+# runtime settings
+# yapf:disable
+log_config = dict(
+    interval=50,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
+# yapf:enable
+
+dist_params = dict(backend='nccl')
+log_level = 'INFO'
+load_from = None
+resume_from = None
+workflow = [('train', 1), ('val', 1)]
