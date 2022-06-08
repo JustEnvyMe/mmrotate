@@ -236,6 +236,8 @@ def main():
             mmcv.dump(outputs, args.out)
         kwargs = {} if args.eval_options is None else args.eval_options
         if args.format_only:
+            if kwargs['submission_dir'] is not None:
+                assert not os.path.exists(kwargs['submission_dir']), "The out_folder should be a non-exist path"
             dataset.format_results(outputs, **kwargs)
         if args.eval:
             eval_kwargs = cfg.get('evaluation', {}).copy()

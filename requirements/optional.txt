@@ -1,3 +1,5 @@
 imagecorruptions
 scipy
 sklearn
+tensorboard
+seaborn

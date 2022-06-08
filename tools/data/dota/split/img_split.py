@@ -136,7 +136,8 @@ def parse_args():
 
 def get_sliding_window(info, sizes, gaps, img_rate_thr):
     """Get sliding windows.
-
+    按照step切割，宽高最后的patch如果不足size，往回移动window，stop与width&height相等。
+    会造成x方向，y方向最后的一个patch和倒二的patch有大面积重复
     Args:
         info (dict): Dict of image's width and height.
         sizes (list): List of window's sizes.
@@ -246,7 +247,7 @@ def bbox_overlaps_iof(bboxes1, bboxes2, eps=1e-6):
 
 def get_window_obj(info, windows, iof_thr):
     """
-
+    todo how about truncate obj coordinate
     Args:
         info (dict): Dict of bbox annotations.
         windows (np.array): information of sliding windows.
@@ -269,7 +270,7 @@ def get_window_obj(info, windows, iof_thr):
                 win_ann[k] = v[pos_inds]
             except TypeError:
                 win_ann[k] = [v[i] for i in pos_inds]
-        win_ann['trunc'] = win_iofs[pos_inds] < 1
+        win_ann['trunc'] = win_iofs[pos_inds] < 1   # 如果等于1,obj就是在这个patch里
         window_anns.append(win_ann)
     return window_anns
 
@@ -284,7 +285,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
         window_anns (list[dict]): List of bbox annotations of every window.
         img_dir (str): Path of images.
         no_padding (bool): If True, no padding.
-        padding_value (tuple[int|float]): Padding value.
+        padding_value (tuple[int|float]): Padding value. 如果patch大小小于window，则padding(3通道=0),补充到window大小
         save_dir (str): Save filename.
         anno_dir (str): Annotation filename.
         img_ext (str): Picture suffix.
@@ -304,6 +305,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
         x_start, y_start, x_stop, y_stop = window.tolist()
         patch_info['x_start'] = x_start
         patch_info['y_start'] = y_start
+        # 文件名
         patch_info['id'] = \
             info['id'] + '__' + str(x_stop - x_start) + \
             '__' + str(x_start) + '___' + str(y_start)
@@ -331,7 +333,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
         cv2.imwrite(osp.join(save_dir, patch_info['id'] + img_ext), patch)
         patch_info['filename'] = patch_info['id'] + img_ext
         patch_infos.append(patch_info)
-
+        # annotation file
         bboxes_num = patch_info['ann']['bboxes'].shape[0]
         outdir = os.path.join(anno_dir, patch_info['id'] + '.txt')
 
@@ -421,11 +423,11 @@ def setup_logger(log_path):
 
 def translate(bboxes, x, y):
     """Map bboxes from window coordinate back to original coordinate.
-
+        坐标系转为对应patch的
     Args:
         bboxes (np.array): bboxes with window coordinate.
-        x (float): Deviation value of x-axis.
-        y (float): Deviation value of y-axis
+        x (float): Deviation value of x-axis. 负的patchx坐标
+        y (float): Deviation value of y-axis 负的patchy坐标
 
     Returns:
         np.array: bboxes with original coordinate.
