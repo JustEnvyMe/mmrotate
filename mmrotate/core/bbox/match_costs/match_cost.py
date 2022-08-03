@@ -1,10 +1,10 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch
 import torch.nn.functional as F
-from mmcv.ops import diff_iou_rotated_2d
 
 from mmdet.core.bbox.iou_calculators import bbox_overlaps
 from mmdet.core.bbox.transforms import bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh
+from mmrotate.core.bbox.iou_calculators import rbbox_overlaps
 
 from .builder import MATCH_COST
 
@@ -255,7 +255,7 @@ class RotatedIoUCost:
 
     """
 
-    def __init__(self, mode='linear', weight=1.):
+    def __init__(self, mode='iou', weight=1.):
         self.weight = weight
         self.mode = mode
 
@@ -272,20 +272,9 @@ class RotatedIoUCost:
         """
         # overlaps: [num_bboxes, num_gt]
         # iou_cost = rotated_iou_loss(bboxes, gt_bboxes, mode=self.mode)
-        eps=1e-6
-        ious = diff_iou_rotated_2d(bbox_pred.unsqueeze(0), gt_bboxes.unsqueeze(0))
-        ious = ious.squeeze(0).clamp(min=eps)
-
-        if self.mode == 'linear':
-            cost = 1 - ious
-        elif self.mode == 'square':
-            cost = 1 - ious**2
-        elif self.mode == 'log':
-            cost = -ious.log()
-        else:
-            raise NotImplementedError
-
-        return cost * self.weight
+        overlaps = rbbox_overlaps(bbox_pred, gt_bboxes, mode=self.mode, is_aligned=False)
+        iou_cost = -overlaps
+        return iou_cost * self.weight
 
 
 @MATCH_COST.register_module()

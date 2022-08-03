@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from mmcv.cnn import ConvModule
-from mmcv.ops import DeformConv2d, chamfer_distance, min_area_polygons
+# from mmcv.ops import DeformConv2d, chamfer_distance, min_area_polygons
 from mmcv.runner import force_fp32
 from mmdet.core import images_to_levels, multi_apply, unmap
 from mmdet.core.anchor.point_generator import MlvlPointGenerator

@@ -1,4 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +19,7 @@ from ..builder import ROTATED_HEADS, build_loss
 
 @ROTATED_HEADS.register_module()
 class RotatedDETRHead(AnchorFreeHead):
-    """Implements the DETR transformer head.
+    """Implements the Rotated DETR transformer head.
 
     See `paper: End-to-End Object Detection with Transformers
     <https://arxiv.org/pdf/2005.12872>`_ for details.
@@ -285,10 +287,10 @@ class RotatedDETRHead(AnchorFreeHead):
                 [nb_dec, bs, num_query, cls_out_channels].
             all_bbox_preds_list (list[Tensor]): Sigmoid regression
                 outputs for each feature level. Each is a 4D-tensor with
-                normalized coordinate format (cx, cy, w, h) and shape
-                [nb_dec, bs, num_query, 4].
+                normalized coordinate format (cx, cy, w, h, a) and shape
+                [nb_dec, bs, num_query, 5].
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
-                with shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
+                with shape (num_gts, 4) in (cx, cy, w, h, a) format.
             gt_labels_list (list[Tensor]): Ground truth class indices for each
                 image with shape (num_gts, ).
             img_metas (list[dict]): List of image meta information.
@@ -348,9 +350,9 @@ class RotatedDETRHead(AnchorFreeHead):
                 for all images. Shape [bs, num_query, cls_out_channels].
             bbox_preds (Tensor): Sigmoid outputs from a single decoder layer
                 for all images, with normalized coordinate (cx, cy, w, h) and
-                shape [bs, num_query, 4].
+                shape [bs, num_query, 5].
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
-                with shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
+                with shape (num_gts, 5) in (cx, cy, w, h, a) format.
             gt_labels_list (list[Tensor]): Ground truth class indices for each
                 image with shape (num_gts, ).
             img_metas (list[dict]): List of image meta information.
@@ -397,7 +399,7 @@ class RotatedDETRHead(AnchorFreeHead):
         for img_meta, bbox_pred in zip(img_metas, bbox_preds):
             img_h, img_w, _ = img_meta['img_shape']
             factor = bbox_pred.new_tensor([img_w, img_h, img_w,
-                                           img_h]).unsqueeze(0).repeat(
+                                           img_h, math.pi/2]).unsqueeze(0).repeat(
                 bbox_pred.size(0), 1)
             factors.append(factor)
         factors = torch.cat(factors, 0)
@@ -406,8 +408,8 @@ class RotatedDETRHead(AnchorFreeHead):
         # thus the learning target is normalized by the image size. So here
         # we need to re-scale them for calculating IoU loss
         bbox_preds = bbox_preds.reshape(-1, 5)
-        bboxes = bbox_cxcywh_to_xyxy(bbox_preds) * factors
-        bboxes_gt = bbox_cxcywh_to_xyxy(bbox_targets) * factors
+        bboxes = bbox_preds * factors
+        bboxes_gt = bbox_targets * factors
 
         # regression IoU loss, defaultly GIoU losstransformer
         loss_iou = self.loss_iou(
@@ -435,9 +437,9 @@ class RotatedDETRHead(AnchorFreeHead):
                 cls_out_channels].
             bbox_preds_list (list[Tensor]): Sigmoid outputs from a single
                 decoder layer for each image, with normalized coordinate
-                (cx, cy, w, h) and shape [num_query, 4].
+                (cx, cy, w, h, a) and shape [num_query, 5].
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
-                with shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
+                with shape (num_gts, 5) in (cx, cy, w, h, a) format.
             gt_labels_list (list[Tensor]): Ground truth class indices for each
                 image with shape (num_gts, ).
             img_metas (list[dict]): List of image meta information.
@@ -490,10 +492,10 @@ class RotatedDETRHead(AnchorFreeHead):
             cls_score (Tensor): Box score logits from a single decoder layer
                 for one image. Shape [num_query, cls_out_channels].
             bbox_pred (Tensor): Sigmoid outputs from a single decoder layer
-                for one image, with normalized coordinate (cx, cy, w, h) and
-                shape [num_query, 4].
+                for one image, with normalized coordinate (cx, cy, w, h, a) and
+                shape [num_query, 5].
             gt_bboxes (Tensor): Ground truth bboxes for one image with
-                shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
+                shape (num_gts, 5) in (cx, cy, w, h, a) format.
             gt_labels (Tensor): Ground truth class indices for one image
                 with shape (num_gts, ).
             img_meta (dict): Meta information for one image.
@@ -538,10 +540,11 @@ class RotatedDETRHead(AnchorFreeHead):
         # Thus the learning target should be normalized by the image size, also
         # the box format should be converted from defaultly x1y1x2y2 to cxcywh.
         factor = bbox_pred.new_tensor([img_w, img_h, img_w,
-                                       img_h]).unsqueeze(0)
+                                       img_h, math.pi/2]).unsqueeze(0)
+
+        # sampling_result.pos_gt_bboxes is xywha
         pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes / factor
-        pos_gt_bboxes_targets = bbox_xyxy_to_cxcywh(pos_gt_bboxes_normalized)
-        bbox_targets[pos_inds] = pos_gt_bboxes_targets
+        bbox_targets[pos_inds] = pos_gt_bboxes_normalized
         return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
                 neg_inds)
 

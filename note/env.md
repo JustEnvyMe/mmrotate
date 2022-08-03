@@ -19,8 +19,13 @@ pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f htt
 
 ### option
 ```shell
-pip install openmim
-mim install mmrotate
+pip install -U openmim
+mim install mmcv-full==1.5.0 
+mim install mmdet==2.25.1
+pip install -v -e . 
+# "-v" means verbose, or more output
+# "-e" means installing a project in editable mode,
+# thus any local modifications made to the code will take effect without reinstallation.
 ```
 
 ### mmcv-full
@@ -63,3 +68,18 @@ sudo apt install libboost-dev
 ## 编译失败
 
 降版本，pip install 指定版本
+
+
+
+# 运行环境记录
+
+## gpu1
+
+### samba
+
+```shell
+# 数据集
+mount.cifs alex@10.231.6.120:dataset /work/workspace/wzw/dataset -o username=alex,password=zya123456
+# 代码
+ #mount.cifs alex@10.231.6.120:code /work/workspace/wzw/code -o username=alex,password=zya123456
+```

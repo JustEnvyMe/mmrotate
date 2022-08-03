@@ -201,8 +201,8 @@ optimizer = dict(
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 lr_config = dict(policy='step', step=[100])
 runner = dict(type='EpochBasedRunner', max_epochs=150)
-checkpoint_config = dict(interval=12, create_symlink=False)
-log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])
+checkpoint_config = dict(interval=4, create_symlink=False)
+log_config = dict(interval=100, hooks=[dict(type='TextLoggerHook'), dict(type='TensorboardLoggerHook')])
 model = dict(
     type='DETR',
     backbone=dict(
@@ -261,13 +261,13 @@ model = dict(
             loss_weight=1.0,
             class_weight=1.0),
         loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-        loss_iou=dict(type='GIoULoss', loss_weight=2.0)),  # todo IoU
+        loss_iou=dict(type='RotatedIoULoss', loss_weight=2.0)),  # todo IoU
     train_cfg=dict(
         assigner=dict(
             type='ObbHungarianAssigner',
             cls_cost=dict(type='ClassificationCost', weight=1.0),
             reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywha'),
-            iou_cost=dict(type='RotatedIoUCost', mode='linear', weight=2.0))),
+            iou_cost=dict(type='RotatedIoUCost', mode='iou', weight=2.0))),
     test_cfg=dict(max_per_img=100))
 custom_hooks = [dict(type='NumClassCheckHook')]
 dist_params = dict(backend='nccl')
