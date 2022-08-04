@@ -14,7 +14,8 @@ from mmdet.core import (bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh,
 from mmdet.models import AnchorFreeHead
 from mmdet.models.utils import build_transformer
 from ..builder import ROTATED_HEADS, build_loss
-
+from ... import obb2poly
+from ...core.bbox.transforms import obb2poly_le90
 
 
 @ROTATED_HEADS.register_module()
@@ -598,17 +599,17 @@ class RotatedDETRHead(AnchorFreeHead):
                 [nb_dec, bs, num_query, cls_out_channels].
             all_bbox_preds_list (list[Tensor]): Sigmoid regression
                 outputs for each feature level. Each is a 4D-tensor with
-                normalized coordinate format (cx, cy, w, h) and shape
-                [nb_dec, bs, num_query, 4].
+                normalized coordinate format (cx, cy, w, h, a) and shape
+                [nb_dec, bs, num_query, 5].
             img_metas (list[dict]): Meta information of each image.
             rescale (bool, optional): If True, return boxes in original
                 image space. Default False.
 
         Returns:
             list[list[Tensor, Tensor]]: Each item in result_list is 2-tuple. \
-                The first item is an (n, 5) tensor, where the first 4 columns \
-                are bounding box positions (tl_x, tl_y, br_x, br_y) and the \
-                5-th column is a score between 0 and 1. The second item is a \
+                The first item is an (n, 6) tensor, where the first 5 columns \
+                are bounding box positions (x, y, w, h, a) and the \
+                6-th column is a score between 0 and 1. The second item is a \
                 (n,) tensor where each item is the predicted class label of \
                 the corresponding box.
         """
@@ -647,7 +648,7 @@ class RotatedDETRHead(AnchorFreeHead):
                 shape [num_query, 4].
             img_shape (tuple[int]): Shape of input image, (height, width, 3).
             scale_factor (ndarray, optional): Scale factor of the image arange
-                as (w_scale, h_scale, w_scale, h_scale).
+                as (w_scale, h_scale, w_scale, h_scale, w_scale, h_scale, w_scale, h_scale).
             rescale (bool, optional): If True, return boxes in original image
                 space. Default False.
 
@@ -676,13 +677,14 @@ class RotatedDETRHead(AnchorFreeHead):
             bbox_pred = bbox_pred[bbox_index]
             det_labels = det_labels[bbox_index]
 
-        det_bboxes = bbox_cxcywh_to_xyxy(bbox_pred)
+        det_bboxes = obb2poly_le90(bbox_pred)
+        # det_bboxes = bbox_cxcywh_to_xyxy(bbox_pred)
         det_bboxes[:, 0::2] = det_bboxes[:, 0::2] * img_shape[1]
         det_bboxes[:, 1::2] = det_bboxes[:, 1::2] * img_shape[0]
         det_bboxes[:, 0::2].clamp_(min=0, max=img_shape[1])
         det_bboxes[:, 1::2].clamp_(min=0, max=img_shape[0])
         if rescale:
-            det_bboxes /= det_bboxes.new_tensor(scale_factor)
+            det_bboxes /= det_bboxes.new_tensor(scale_factor).repeat(2)
         det_bboxes = torch.cat((det_bboxes, scores.unsqueeze(1)), -1)
 
         return det_bboxes, det_labels
@@ -699,8 +701,8 @@ class RotatedDETRHead(AnchorFreeHead):
 
         Returns:
             list[tuple[Tensor, Tensor]]: Each item in result_list is 2-tuple.
-                The first item is ``bboxes`` with shape (n, 5),
-                where 5 represent (tl_x, tl_y, br_x, br_y, score).
+                The first item is ``bboxes`` with shape (n, 6),
+                where 5 represent (x, y, w, h, a, score).
                 The shape of the second tensor in the tuple is ``labels``
                 with shape (n,)
         """

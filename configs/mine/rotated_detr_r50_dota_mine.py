@@ -1,6 +1,5 @@
-# data_root = '/dataset/DOTA/DOTA-v1.0/split_ms_dota1_0/'
-data_root = '/media/alex/AC6A2BDB6A2BA0D6/alex_dataset/DOTA/DOTA-v1.0/split_ms_dota1_0/'
-
+# data_root = '/media/alex/AC6A2BDB6A2BA0D6/alex_dataset/DOTA/DOTA-v1.0/split_ms_dota1_0/'
+data_root = 'dataset_demo/DOTA/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
