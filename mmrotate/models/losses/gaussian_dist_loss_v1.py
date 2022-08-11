@@ -117,8 +117,8 @@ def kld_loss(pred, target, fun='log1p', tau=1.0):
     """Kullback-Leibler Divergence loss.
 
     Args:
-        pred (torch.Tensor): Predicted bboxes.
-        target (torch.Tensor): Corresponding gt bboxes.
+        pred (torch.Tensor): Predicted bboxes. (mu, sigma)
+        target (torch.Tensor): Corresponding gt bboxes. (mu, sigma)
         fun (str): The function applied to distance. Defaults to 'log1p'.
         tau (float): Defaults to 1.0.
 
@@ -198,7 +198,7 @@ class GDLoss_v1(nn.Module):
         """Forward function.
 
         Args:
-            pred (torch.Tensor): Predicted convexes.
+            pred (torch.Tensor): Predicted convexes. (x, y, w, h, a)
             target (torch.Tensor): Corresponding gt convexes.
             weight (torch.Tensor, optional): The weight of loss for each
                 prediction. Defaults to None.

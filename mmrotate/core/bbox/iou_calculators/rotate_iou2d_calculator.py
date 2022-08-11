@@ -59,8 +59,7 @@ def rbbox_overlaps(bboxes1, bboxes2, mode='iou', is_aligned=False):
         bboxes2 (torch.Tensor): shape (B, n, 5) in <cx, cy, w, h, a> format
             or empty.
         mode (str): "iou" (intersection over union), "iof" (intersection over
-            foreground) or "giou" (generalized intersection over union).
-            Default "iou".
+            foreground). Default "iou".
         is_aligned (bool, optional): If True, then m and n must be equal.
             Default False.
 

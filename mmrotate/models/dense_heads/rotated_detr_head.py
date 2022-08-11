@@ -117,9 +117,10 @@ class RotatedDETRHead(AnchorFreeHead):
             assert loss_bbox['loss_weight'] == assigner['reg_cost'][
                 'weight'], 'The regression L1 weight for loss and matcher ' \
                            'should be exactly the same.'
-            assert loss_iou['loss_weight'] == assigner['iou_cost']['weight'], \
-                'The regression iou weight for loss and matcher should be' \
-                'exactly the same.'
+            if 'iou_cose' in assigner:
+                assert loss_iou['loss_weight'] == assigner['iou_cost']['weight'], \
+                    'The regression iou weight for loss and matcher should be' \
+                    'exactly the same.'
             self.assigner = build_assigner(assigner)
             # DETR sampling=False, so use PseudoSampler
             sampler_cfg = dict(type='PseudoSampler')
@@ -242,7 +243,7 @@ class RotatedDETRHead(AnchorFreeHead):
                 cls_out_channels should includes background.
             all_bbox_preds (Tensor): Sigmoid outputs from the regression
                 head with normalized coordinate format (cx, cy, w, h).
-                Shape [nb_dec, bs, num_query, 4].
+                Shape [nb_dec, bs, num_query, 5]. value range[0, 1]
         """
         # construct binary masks which used for the transformer.
         # NOTE following the official DETR repo, non-zero values representing
@@ -326,14 +327,14 @@ class RotatedDETRHead(AnchorFreeHead):
         loss_dict['loss_bbox'] = losses_bbox[-1]
         loss_dict['loss_iou'] = losses_iou[-1]
         # loss from other decoder layers
-        num_dec_layer = 0
-        for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
-                                                       losses_bbox[:-1],
-                                                       losses_iou[:-1]):
-            loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
-            loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
-            loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
-            num_dec_layer += 1
+        # num_dec_layer = 0
+        # for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
+        #                                                losses_bbox[:-1],
+        #                                                losses_iou[:-1]):
+        #     loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
+        #     loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
+        #     loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
+        #     num_dec_layer += 1
         return loss_dict
 
     def loss_single(self,
@@ -350,7 +351,7 @@ class RotatedDETRHead(AnchorFreeHead):
             cls_scores (Tensor): Box score logits from a single decoder layer
                 for all images. Shape [bs, num_query, cls_out_channels].
             bbox_preds (Tensor): Sigmoid outputs from a single decoder layer
-                for all images, with normalized coordinate (cx, cy, w, h) and
+                for all images, with normalized coordinate (cx, cy, w, h, a) and
                 shape [bs, num_query, 5].
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
                 with shape (num_gts, 5) in (cx, cy, w, h, a) format.
@@ -413,8 +414,11 @@ class RotatedDETRHead(AnchorFreeHead):
         bboxes_gt = bbox_targets * factors
 
         # regression IoU loss, defaultly GIoU losstransformer
-        loss_iou = self.loss_iou(
-            bboxes, bboxes_gt, bbox_weights, avg_factor=num_total_pos)
+        if self.loss_iou:
+            loss_iou = self.loss_iou(
+                bboxes, bboxes_gt, bbox_weights, avg_factor=num_total_pos)
+        else:
+            loss_iou = torch.zeros_like(loss_cls)
 
         # regression L1 loss
         loss_bbox = self.loss_bbox(
@@ -450,11 +454,11 @@ class RotatedDETRHead(AnchorFreeHead):
         Returns:
             tuple: a tuple containing the following targets.
 
-                - labels_list (list[Tensor]): Labels for all images.
+                - labels_list (list[Tensor]): Labels for all images. [(num_query)]
                 - label_weights_list (list[Tensor]): Label weights for all \
                     images.
                 - bbox_targets_list (list[Tensor]): BBox targets for all \
-                    images.
+                    images. [(num_query, 5)]
                 - bbox_weights_list (list[Tensor]): BBox weights for all \
                     images.
                 - num_total_pos (int): Number of positive samples in all \
@@ -543,7 +547,7 @@ class RotatedDETRHead(AnchorFreeHead):
         factor = bbox_pred.new_tensor([img_w, img_h, img_w,
                                        img_h, math.pi/2]).unsqueeze(0)
 
-        # sampling_result.pos_gt_bboxes is xywha
+        # sampling_result.pos_gt_bboxes come from bbox_pred, with format (x, y, w, h, a)
         pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes / factor
         bbox_targets[pos_inds] = pos_gt_bboxes_normalized
         return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,

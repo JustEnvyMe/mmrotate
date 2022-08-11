@@ -1,9 +1,10 @@
+import math
+
 import torch
 from mmdet.core import BaseAssigner, AssignResult, bbox_cxcywh_to_xyxy
 from ..match_costs import build_match_cost
 
 from ..builder import ROTATED_BBOX_ASSIGNERS
-
 
 try:
     from scipy.optimize import linear_sum_assignment
@@ -43,14 +44,16 @@ class ObbHungarianAssigner(BaseAssigner):
     """
 
     def __init__(self,
-                 cls_cost=dict(type='ClassificationCost', weight=1.),
-                 reg_cost=dict(type='BBoxL1Cost', weight=1.0),
-                 iou_cost=dict(type='IoUCost', iou_mode='giou', weight=1.0)):
+                 cls_cost=None,
+                 # dict(type='ClassificationCost', weight=1.),
+                 reg_cost=None,
+                 # dict(type='BBoxL1Cost', weight=1.0),
+                 iou_cost=None):
+        # dict(type='IoUCost', iou_mode='giou', weight=1.0)):
         super(ObbHungarianAssigner, self).__init__()
-        self.cls_cost = build_match_cost(cls_cost)
-        self.reg_cost = build_match_cost(reg_cost)
-        self.iou_cost = build_match_cost(iou_cost)
-
+        self.cls_cost = build_match_cost(cls_cost) if cls_cost is not None else None
+        self.reg_cost = build_match_cost(reg_cost) if reg_cost is not None else None
+        self.iou_cost = build_match_cost(iou_cost) if iou_cost is not None else None
 
     def assign(self,
                bbox_pred,
@@ -77,12 +80,12 @@ class ObbHungarianAssigner(BaseAssigner):
 
         Args:
             bbox_pred (Tensor): Predicted boxes with normalized coordinates
-                (cx, cy, w, h), which are all in range [0, 1]. Shape
-                [num_query, 4].
+                (cx, cy, w, h, a), which are all in range [0, 1]. Shape
+                [num_query, 5].
             cls_pred (Tensor): Predicted classification logits, shape
                 [num_query, num_class].
             gt_bboxes (Tensor): Ground truth boxes with unnormalized
-                coordinates (x1, y1, x2, y2). Shape [num_gt, 4].
+                coordinates (cx, cy, w, h, a). Shape [num_gt, 5].
             gt_labels (Tensor): Label of `gt_bboxes`, shape (num_gt,).
             img_meta (dict): Meta information for current image.
             gt_bboxes_ignore (Tensor, optional): Ground truth bboxes that are
@@ -98,10 +101,10 @@ class ObbHungarianAssigner(BaseAssigner):
         num_gts, num_bboxes = gt_bboxes.size(0), bbox_pred.size(0)
 
         # 1. assign -1 by default
-        assigned_gt_inds = bbox_pred.new_full((num_bboxes, ),
+        assigned_gt_inds = bbox_pred.new_full((num_bboxes,),
                                               -1,
                                               dtype=torch.long)
-        assigned_labels = bbox_pred.new_full((num_bboxes, ),
+        assigned_labels = bbox_pred.new_full((num_bboxes,),
                                              -1,
                                              dtype=torch.long)
         if num_gts == 0 or num_bboxes == 0:
@@ -113,7 +116,7 @@ class ObbHungarianAssigner(BaseAssigner):
                 num_gts, assigned_gt_inds, None, labels=assigned_labels)
         img_h, img_w, _ = img_meta['img_shape']
         factor = gt_bboxes.new_tensor([img_w, img_h, img_w,
-                                       img_h, 1]).unsqueeze(0)
+                                       img_h, math.pi/2]).unsqueeze(0)
 
         # 2. compute the weighted costs
         # classification and bboxcost.
@@ -124,8 +127,13 @@ class ObbHungarianAssigner(BaseAssigner):
         # regression iou cost, defaultly giou is used in official DETR.
         # bboxes = bbox_cxcywh_to_xyxy(bbox_pred) * factor
 
-        iou_cost = self.iou_cost(bbox_pred, gt_bboxes)
-        # weighted sum of above three costs
+        bboxes = bbox_pred * factor
+        if self.iou_cost is not None:
+            iou_cost = self.iou_cost(bboxes, gt_bboxes)
+            # weighted sum of above three costs
+        else:
+            iou_cost = torch.zeros_like(cls_cost)
+
         cost = cls_cost + reg_cost + iou_cost
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment

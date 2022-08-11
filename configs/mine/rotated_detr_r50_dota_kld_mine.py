@@ -201,12 +201,7 @@ optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 lr_config = dict(policy='step', step=[100])
 runner = dict(type='EpochBasedRunner', max_epochs=150)
 checkpoint_config = dict(interval=4, create_symlink=False)
-log_config = dict(
-    interval=100,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
-    ])
+log_config = dict(interval=100, hooks=[dict(type='TextLoggerHook'), dict(type='TensorboardLoggerHook')])
 model = dict(
     type='DETR',
     backbone=dict(
@@ -244,7 +239,7 @@ model = dict(
             decoder=dict(
                 type='DetrTransformerDecoder',
                 return_intermediate=True,
-                num_layers=4,
+                num_layers=6,
                 transformerlayers=dict(
                     type='DetrTransformerDecoderLayer',
                     attn_cfgs=dict(
@@ -258,20 +253,27 @@ model = dict(
                                      'ffn', 'norm')))),
         positional_encoding=dict(
             type='SinePositionalEncoding', num_feats=128, normalize=True),
+
+        # no iou_loss
         loss_cls=dict(
             type='CrossEntropyLoss',
             bg_cls_weight=0.1,
             use_sigmoid=False,
             loss_weight=1.0,
             class_weight=1.0),
-        loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-        loss_iou=dict(type='RotatedIoULoss', loss_weight=2.0)),
+        loss_bbox=dict(
+            type='GDLoss_v1',
+            loss_type='kld',
+            fun='log1p',
+            tau=1.0,
+            loss_weight=1.0),
+    ),
     train_cfg=dict(
         assigner=dict(
             type='ObbHungarianAssigner',
             cls_cost=dict(type='ClassificationCost', weight=1.0),
-            reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywha'),
-            iou_cost=dict(type='RotatedIoUCost', mode='iou', weight=2.0))),
+            reg_cost=dict(type='KLDLossCost', weight=1.0, fun='log1p', tau=1.0),
+        )),
     test_cfg=dict(max_per_img=100))
 custom_hooks = [dict(type='NumClassCheckHook')]
 dist_params = dict(backend='nccl')

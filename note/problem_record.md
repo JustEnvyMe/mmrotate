@@ -60,3 +60,41 @@ torch的异常，torch要求必须是Module类
 重新看了下RotatedAnchorFree的代码与AnchorFreeHead是一样的。 XD
 
 直接继承AnchorFreeHead, OK。
+
+
+
+## 版本兼容问题
+
+### opencv 兼容问题
+- partially initialized module 'cv2' has no attribute 'gapi_wip_gst_GStreamerPipeline' (most likely due to a circular import)
+- partially initialized module 'cv2' has no attribute '_registerMatType' (most likely due to a circular import)
+
+### openmmlab 
+- MMCV==1.6.1 is used but incompatible. Please install mmcv>=1.4.5, <=1.6.0.
+
+
+**解决**
+
+1. 用mim list查看openmmlab安装了什么
+2. 把没用的删掉。像是mmcls,mmtrack,mmaction2
+3. 可以尝试重装mmcv-full,mmdet,mmrotate
+
+
+
+## rotated detr loss问题
+
+### more2more 对应关系
+
+detr与原先one/two stage检测器不同
+
+- one/two stage 是one2one的对应关系算loss， 每个gt_bbox分配到对应一个pred_bbox
+- detr是gt与pred数量不一致，需要两两算距离
+
+
+### iou loss比detr大特别多
+
+- detr预测iou的输入是xyxy, rotated输入是xywha
+- detr预测bbox,是预测offset(dxdydwdh), 而rotated detr参照retinanet_gwd预测的是(xywh),导致wh与xy一开始是在一个数量级上的，导致差异。
+- detr iou_loss使用的是giou, rotated giou没有实现
+- giou是可以为负的
+- 

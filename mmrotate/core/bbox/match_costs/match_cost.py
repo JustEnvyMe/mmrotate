@@ -4,10 +4,10 @@ import torch.nn.functional as F
 
 from mmdet.core.bbox.iou_calculators import bbox_overlaps
 from mmdet.core.bbox.transforms import bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh
+
 from mmrotate.core.bbox.iou_calculators import rbbox_overlaps
 
 from .builder import MATCH_COST
-
 
 
 @MATCH_COST.register_module()
@@ -399,3 +399,83 @@ class CrossEntropyLossCost:
             raise NotImplementedError
 
         return cls_cost * self.weight
+
+
+@MATCH_COST.register_module()
+class KLDLossCost:
+
+    def __init__(self, weight=1., fun='log1p', tau=1.0):
+        self.weight = weight
+        self.fun = fun
+        self.tau = tau
+
+    def xy_wh_r_2_xy_sigma(self, xywhr):
+        """Convert oriented bounding box to 2-D Gaussian distribution.
+
+        Args:
+            xywhr (torch.Tensor): rbboxes with shape (N, 5).
+
+        Returns:
+            xy (torch.Tensor): center point of 2-D Gaussian distribution
+                with shape (N, 2).
+            sigma (torch.Tensor): covariance matrix of 2-D Gaussian distribution
+                with shape (N, 2, 2).
+        """
+        _shape = xywhr.shape
+        assert _shape[-1] == 5
+        xy = xywhr[..., :2]
+        wh = xywhr[..., 2:4].clamp(min=1e-7, max=1e7).reshape(-1, 2)
+        r = xywhr[..., 4]
+        cos_r = torch.cos(r)
+        sin_r = torch.sin(r)
+        R = torch.stack((cos_r, -sin_r, sin_r, cos_r), dim=-1).reshape(-1, 2, 2)
+        S = 0.5 * torch.diag_embed(wh)
+
+        sigma = R.bmm(S.square()).bmm(R.permute(0, 2,
+                                                1)).reshape(_shape[:-1] + (2, 2))
+
+        return xy, sigma
+
+    def __call__(self, pred, target):
+        """
+        Args:
+            bboxes (Tensor): Predicted boxes with unnormalized coordinates
+                (x1, y1, x2, y2, x3, y3, x4, y4). Shape (num_query, 8).
+            gt_bboxes (Tensor): Ground truth boxes with unnormalized
+                coordinates (x1, y1, x2, y2, x3, y3, x4, y4). Shape (num_gt, 8).
+
+        Returns:
+            torch.Tensor: iou_cost value with weight （num_query, num_gt）
+        """
+        pred = self.xy_wh_r_2_xy_sigma(pred)
+        target = self.xy_wh_r_2_xy_sigma(target)
+
+        mu_p, sigma_p = pred
+        mu_t, sigma_t = target
+
+        mu_p = mu_p.reshape(-1, 2)
+        mu_t = mu_t.reshape(-1, 2)
+        sigma_p = sigma_p.reshape(-1, 2, 2)
+        sigma_t = sigma_t.reshape(-1, 2, 2)
+
+        # todo mu_p (100, 2)  mu_t(8, 2)
+        # todo not sure the result is right
+        delta = (mu_p[None, :, :] - mu_t[:, None, :]).unsqueeze(-1)  # (nm, 2, 1)
+        # delta = (mu_p - mu_t).unsqueeze(-1)
+        sigma_t_inv = torch.inverse(sigma_t)
+        term1 = delta.transpose(-1, -2) \
+            .matmul(sigma_t_inv[:, None, :, :]).matmul(delta).reshape(-1, 1)
+        term2 = torch.diagonal(
+            sigma_t_inv[:, None, :, :].matmul(sigma_p[None, :, :, :]).reshape(-1, 2, 2),
+            dim1=-2, dim2=-1
+        ).sum(dim=-1, keepdim=True) + \
+                torch.log(torch.det(sigma_t[:, None, :, :]) / torch.det(sigma_p[None, :, :, :])).reshape(-1, 1)
+
+        dis = term1 + term2 - 2
+        kl_dis = dis.clamp(min=1e-6)
+        if self.fun == 'sqrt':
+            kl_loss = 1 - 1 / (self.tau + torch.sqrt(kl_dis))
+        else:
+            kl_loss = 1 - 1 / (self.tau + torch.log1p(kl_dis))
+
+        return kl_loss * self.weight
