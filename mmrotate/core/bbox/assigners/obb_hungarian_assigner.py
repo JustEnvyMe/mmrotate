@@ -137,6 +137,7 @@ class ObbHungarianAssigner(BaseAssigner):
         cost = cls_cost + reg_cost + iou_cost
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
+        # match cost will not back propagate, cost is just used in matching
         cost = cost.detach().cpu()
         if linear_sum_assignment is None:
             raise ImportError('Please run "pip install scipy" '

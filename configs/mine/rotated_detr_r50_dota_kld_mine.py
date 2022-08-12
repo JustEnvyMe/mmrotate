@@ -266,13 +266,14 @@ model = dict(
             loss_type='kld',
             fun='log1p',
             tau=1.0,
-            loss_weight=1.0),
+            loss_weight=2.0),
     ),
+    # set loss_bbox weight larger than loss_cls for paying more attention to regression
     train_cfg=dict(
         assigner=dict(
             type='ObbHungarianAssigner',
             cls_cost=dict(type='ClassificationCost', weight=1.0),
-            reg_cost=dict(type='KLDLossCost', weight=1.0, fun='log1p', tau=1.0),
+            reg_cost=dict(type='KLDLossCost', weight=2.0, fun='log1p', tau=1.0),
         )),
     test_cfg=dict(max_per_img=100))
 custom_hooks = [dict(type='NumClassCheckHook')]

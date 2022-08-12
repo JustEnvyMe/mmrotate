@@ -260,14 +260,14 @@ model = dict(
             use_sigmoid=False,
             loss_weight=1.0,
             class_weight=1.0),
-        loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-        loss_iou=dict(type='RotatedIoULoss', loss_weight=2.0)),  # todo IoU
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0),
+        loss_iou=dict(type='RotatedIoULoss', loss_weight=0.2)),
     train_cfg=dict(
         assigner=dict(
             type='ObbHungarianAssigner',
             cls_cost=dict(type='ClassificationCost', weight=1.0),
-            reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywha'),
-            iou_cost=dict(type='RotatedIoUCost', mode='iou', weight=2.0))),
+            reg_cost=dict(type='BBoxL1Cost', weight=1.0, box_format='xywha'),
+            iou_cost=dict(type='RotatedIoUCost', mode='iou', weight=0.2))),
     test_cfg=dict(max_per_img=100))
 custom_hooks = [dict(type='NumClassCheckHook')]
 dist_params = dict(backend='nccl')

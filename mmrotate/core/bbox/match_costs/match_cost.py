@@ -460,22 +460,29 @@ class KLDLossCost:
 
         # todo mu_p (100, 2)  mu_t(8, 2)
         # todo not sure the result is right
-        delta = (mu_p[None, :, :] - mu_t[:, None, :]).unsqueeze(-1)  # (nm, 2, 1)
-        # delta = (mu_p - mu_t).unsqueeze(-1)
-        sigma_t_inv = torch.inverse(sigma_t)
-        term1 = delta.transpose(-1, -2) \
-            .matmul(sigma_t_inv[:, None, :, :]).matmul(delta).reshape(-1, 1)
+        num_query = mu_p.shape[0]
+        num_gt = mu_t.shape[0]
+        assert num_query >= num_gt, "number of ground truth bbox large than number of query"
+
+        delta = (mu_p[:, None, :] - mu_t[None, :, :]) \
+            .reshape(num_query, num_gt, 2) \
+            .unsqueeze(-1)  # (m, n, 2, 1)
+        sigma_t_inv = torch.inverse(sigma_t)  # (n, 2, 2)
+
+        term1 = delta.transpose(-1, -2).matmul(sigma_t_inv[None, :, :, :]).matmul(delta) \
+            .reshape(mu_p.shape[0], mu_t.shape[0])
         term2 = torch.diagonal(
-            sigma_t_inv[:, None, :, :].matmul(sigma_p[None, :, :, :]).reshape(-1, 2, 2),
+            sigma_t_inv[None, :, :, :].matmul(sigma_p[:, None, :, :]),
             dim1=-2, dim2=-1
-        ).sum(dim=-1, keepdim=True) + \
-                torch.log(torch.det(sigma_t[:, None, :, :]) / torch.det(sigma_p[None, :, :, :])).reshape(-1, 1)
+        ).sum(dim=-1, keepdim=True).squeeze(-1) \
+                + torch.log(torch.det(sigma_t_inv[None, :, :, :]) / torch.det(sigma_p[:, None, :, :]))
 
         dis = term1 + term2 - 2
         kl_dis = dis.clamp(min=1e-6)
+        # The 1 is a constant that doesn't change the matching, so omitted.
         if self.fun == 'sqrt':
-            kl_loss = 1 - 1 / (self.tau + torch.sqrt(kl_dis))
+            kl_loss = - 1 / (self.tau + torch.sqrt(kl_dis))
         else:
-            kl_loss = 1 - 1 / (self.tau + torch.log1p(kl_dis))
+            kl_loss = - 1 / (self.tau + torch.log1p(kl_dis))
 
         return kl_loss * self.weight
