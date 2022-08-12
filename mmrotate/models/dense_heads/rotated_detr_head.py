@@ -71,14 +71,14 @@ class RotatedDETRHead(AnchorFreeHead):
                      loss_weight=1.0,
                      class_weight=1.0),
                  loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-                 loss_iou=dict(type=None, loss_weight=1.0),
+                 loss_iou=None,  # dict(type="GIoULoss”, loss_weight=2.0),
                  train_cfg=dict(
                      assigner=dict(
                          type='HungarianAssigner',
                          cls_cost=dict(type='ClassificationCost', weight=1.),
                          reg_cost=dict(type='BBoxL1Cost', weight=5.0),
-                         iou_cost=dict(
-                             type='IoUCost', iou_mode='giou', weight=2.0))),
+                         iou_cost=None, # dict(type='IoUCost', iou_mode='giou', weight=2.0)
+                     )),
                  test_cfg=dict(max_per_img=100),
                  init_cfg=None,
                  **kwargs):
@@ -134,7 +134,7 @@ class RotatedDETRHead(AnchorFreeHead):
         self.fp16_enabled = False
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
-        self.loss_iou = build_loss(loss_iou)
+        self.loss_iou = build_loss(loss_iou) if loss_iou is not None else None
 
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes
@@ -153,7 +153,6 @@ class RotatedDETRHead(AnchorFreeHead):
                                                  f' be exactly 2 times of num_feats. Found {self.embed_dims}' \
                                                  f' and {num_feats}.'
         self._init_layers()
-
 
     def _init_layers(self):
         """Initialize layers of the transformer head."""
@@ -401,7 +400,7 @@ class RotatedDETRHead(AnchorFreeHead):
         for img_meta, bbox_pred in zip(img_metas, bbox_preds):
             img_h, img_w, _ = img_meta['img_shape']
             factor = bbox_pred.new_tensor([img_w, img_h, img_w,
-                                           img_h, math.pi/2]).unsqueeze(0).repeat(
+                                           img_h, math.pi / 2]).unsqueeze(0).repeat(
                 bbox_pred.size(0), 1)
             factors.append(factor)
         factors = torch.cat(factors, 0)
@@ -545,7 +544,7 @@ class RotatedDETRHead(AnchorFreeHead):
         # Thus the learning target should be normalized by the image size, also
         # the box format should be converted from defaultly x1y1x2y2 to cxcywh.
         factor = bbox_pred.new_tensor([img_w, img_h, img_w,
-                                       img_h, math.pi/2]).unsqueeze(0)
+                                       img_h, math.pi / 2]).unsqueeze(0)
 
         # sampling_result.pos_gt_bboxes come from bbox_pred, with format (x, y, w, h, a)
         pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes / factor
