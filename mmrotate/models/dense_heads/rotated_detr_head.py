@@ -324,7 +324,8 @@ class RotatedDETRHead(AnchorFreeHead):
         # loss from the last decoder layer
         loss_dict['loss_cls'] = losses_cls[-1]
         loss_dict['loss_bbox'] = losses_bbox[-1]
-        loss_dict['loss_iou'] = losses_iou[-1]
+        if losses_iou[-1]:
+            loss_dict['loss_iou'] = losses_iou[-1]
         # loss from other decoder layers
         # num_dec_layer = 0
         # for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
@@ -417,7 +418,7 @@ class RotatedDETRHead(AnchorFreeHead):
             loss_iou = self.loss_iou(
                 bboxes, bboxes_gt, bbox_weights, avg_factor=num_total_pos)
         else:
-            loss_iou = torch.zeros_like(loss_cls)
+            loss_iou = None
 
         # regression L1 loss
         loss_bbox = self.loss_bbox(
@@ -647,8 +648,8 @@ class RotatedDETRHead(AnchorFreeHead):
             cls_score (Tensor): Box score logits from the last decoder layer
                 for each image. Shape [num_query, cls_out_channels].
             bbox_pred (Tensor): Sigmoid outputs from the last decoder layer
-                for each image, with coordinate format (cx, cy, w, h) and
-                shape [num_query, 4].
+                for each image, with coordinate format (cx, cy, w, h, a) and
+                shape [num_query, 5].
             img_shape (tuple[int]): Shape of input image, (height, width, 3).
             scale_factor (ndarray, optional): Scale factor of the image arange
                 as (w_scale, h_scale, w_scale, h_scale, w_scale, h_scale, w_scale, h_scale).
@@ -658,9 +659,9 @@ class RotatedDETRHead(AnchorFreeHead):
         Returns:
             tuple[Tensor]: Results of detected bboxes and labels.
 
-                - det_bboxes: Predicted bboxes with shape [num_query, 5], \
-                    where the first 4 columns are bounding box positions \
-                    (tl_x, tl_y, br_x, br_y) and the 5-th column are scores \
+                - det_bboxes: Predicted bboxes with shape [num_query, 9], \
+                    where the first 8 columns are bounding box positions \
+                    (x1, y1, x2, y2, x3, y3, x4, y4) and the 9-th column are scores \
                     between 0 and 1.
                 - det_labels: Predicted labels of the corresponding box with \
                     shape [num_query].

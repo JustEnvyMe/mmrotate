@@ -11,44 +11,6 @@ train_pipeline = [
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
         version='le90'),
-    # dict(type='RandomFlip', flip_ratio=0.5),
-    # dict(
-    #     type='AutoAugment',
-    #     policies=[[{
-    #         'type':
-    #         'Resize',
-    #         'img_scale': [(480, 1333), (512, 1333), (544, 1333), (576, 1333),
-    #                       (608, 1333), (640, 1333), (672, 1333), (704, 1333),
-    #                       (736, 1333), (768, 1333), (800, 1333)],
-    #         'multiscale_mode':
-    #         'value',
-    #         'keep_ratio':
-    #         True
-    #     }],
-    #               [{
-    #                   'type': 'Resize',
-    #                   'img_scale': [(400, 1333), (500, 1333), (600, 1333)],
-    #                   'multiscale_mode': 'value',
-    #                   'keep_ratio': True
-    #               }, {
-    #                   'type': 'RandomCrop',
-    #                   'crop_type': 'absolute_range',
-    #                   'crop_size': (384, 600),
-    #                   'allow_negative_crop': True
-    #               }, {
-    #                   'type':
-    #                   'Resize',
-    #                   'img_scale': [(480, 1333), (512, 1333), (544, 1333),
-    #                                 (576, 1333), (608, 1333), (640, 1333),
-    #                                 (672, 1333), (704, 1333), (736, 1333),
-    #                                 (768, 1333), (800, 1333)],
-    #                   'multiscale_mode':
-    #                   'value',
-    #                   'override':
-    #                   True,
-    #                   'keep_ratio':
-    #                   True
-    #               }]]),
     dict(
         type='Normalize',
         mean=[123.675, 116.28, 103.53],
@@ -66,7 +28,11 @@ test_pipeline = [
         flip=False,
         transforms=[
             dict(type='RResize'),
-            dict(type='RandomFlip'),
+            dict(
+                type='RRandomFlip',
+                flip_ratio=[0.25, 0.25, 0.25],
+                direction=['horizontal', 'vertical', 'diagonal'],
+                version='le90'),
             dict(
                 type='Normalize',
                 mean=[123.675, 116.28, 103.53],
@@ -85,7 +51,8 @@ data = dict(
         type='DOTADataset',
         ann_file=data_root + 'train/annfiles/',
         img_prefix=data_root + 'train/images/',
-        pipeline=train_pipeline),
+        pipeline=train_pipeline
+    ),
     val=dict(
         type='DOTADataset',
         ann_file=data_root + 'val/annfiles/',
@@ -98,6 +65,7 @@ data = dict(
         img_prefix=data_root + 'test/images/',
         pipeline=test_pipeline,
         version='le90'))
+
 evaluation = dict(save_best='auto', interval=1, metric='mAP')
 optimizer = dict(
     type='AdamW',
@@ -116,81 +84,91 @@ log_config = dict(
         dict(type='TensorboardLoggerHook')
     ])
 model = dict(
-    type='DETR',
+    type='DeformableDETR',
     backbone=dict(
         type='ResNet',
         depth=50,
         num_stages=4,
-        out_indices=(3,),
+        out_indices=(1, 2, 3),
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=False),
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+    neck=dict(
+        type='ChannelMapper',
+        in_channels=[512, 1024, 2048],
+        kernel_size=1,
+        out_channels=256,
+        act_cfg=None,
+        norm_cfg=dict(type='GN', num_groups=32),
+        num_outs=4),
     bbox_head=dict(
-        type='RotatedDETRHead',
+        type='RotatedDeformableDETRHead',
+        num_query=300,
         num_classes=15,
         in_channels=2048,
-        num_query=100,
+        sync_cls_avg_factor=True,
+        as_two_stage=False,
         transformer=dict(
-            type='Transformer',
+            type='DeformableDetrTransformer',
             encoder=dict(
                 type='DetrTransformerEncoder',
                 num_layers=6,
                 transformerlayers=dict(
                     type='BaseTransformerLayer',
+                    attn_cfgs=dict(
+                        type='MultiScaleDeformableAttention', embed_dims=256),
+                    feedforward_channels=1024,
+                    ffn_dropout=0.1,
+                    operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
+            decoder=dict(
+                type='DeformableDetrTransformerDecoder',
+                num_layers=6,
+                return_intermediate=True,
+                transformerlayers=dict(
+                    type='DetrTransformerDecoderLayer',
                     attn_cfgs=[
                         dict(
                             type='MultiheadAttention',
                             embed_dims=256,
-                            num_heads=8,
-                            dropout=0.1)
+                            num_heads=4,
+                            dropout=0.1),
+                        dict(
+                            type='MultiScaleDeformableAttention',
+                            embed_dims=256)
                     ],
-                    feedforward_channels=2048,
-                    ffn_dropout=0.1,
-                    operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
-            decoder=dict(
-                type='DetrTransformerDecoder',
-                return_intermediate=True,
-                num_layers=4,
-                transformerlayers=dict(
-                    type='DetrTransformerDecoderLayer',
-                    attn_cfgs=dict(
-                        type='MultiheadAttention',
-                        embed_dims=256,
-                        num_heads=8,
-                        dropout=0.1),
-                    feedforward_channels=2048,
+                    feedforward_channels=1024,
                     ffn_dropout=0.1,
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
                                      'ffn', 'norm')))),
         positional_encoding=dict(
-            type='SinePositionalEncoding', num_feats=128, normalize=True),
+            type='SinePositionalEncoding',
+            num_feats=128,
+            normalize=True,
+            offset=-0.5),
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            bg_cls_weight=0.1,
-            use_sigmoid=False,
-            loss_weight=1.0,
-            class_weight=1.0),
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=2.0),
         loss_bbox=dict(type='L1Loss', loss_weight=5.0),
         loss_iou=dict(type='RotatedIoULoss', loss_weight=2.0)),
     train_cfg=dict(
         assigner=dict(
             type='ObbHungarianAssigner',
-            cls_cost=dict(type='ClassificationCost', weight=1.0),
+            cls_cost=dict(type='FocalLossCost', weight=2.0),
             reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywha'),
             iou_cost=dict(type='RotatedIoUCost', mode='iou', weight=2.0))),
     test_cfg=dict(max_per_img=100))
-custom_hooks = [dict(type='NumClassCheckHook')]
-dist_params = dict(backend='nccl')
+
 log_level = 'INFO'
 load_from = None
 resume_from = None
 workflow = [('train', 1), ('val', 1)]
 opencv_num_threads = 0
 mp_start_method = 'fork'
-auto_scale_lr = dict(enable=False, base_batch_size=16)
-
-# work_dir = './work_dirs/detr_r50_8x2_150e_coco'
+work_dir = './work_dirs/rotated_deformable_detr_r50'
 auto_resume = False
 gpu_ids = [0]

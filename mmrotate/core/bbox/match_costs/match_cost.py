@@ -462,12 +462,23 @@ class KLDLossCost:
         # todo not sure the result is right
         num_query = mu_p.shape[0]
         num_gt = mu_t.shape[0]
-        assert num_query >= num_gt, "number of ground truth bbox large than number of query"
+        assert num_query >= num_gt, f"number of ground truth bbox {num_gt} large than number of query {num_query}"
+
+        assert not torch.any(torch.isnan(mu_p)).item(), f"mu_p: {mu_p}"
+        assert not torch.any(torch.isnan(mu_t)).item(), f"mu_t: {mu_t}"
+        assert not torch.any(torch.isnan(sigma_p)).item(), f"sigma_p: {sigma_p}"
+        assert not torch.any(torch.isnan(sigma_t)).item(), f"sigma_t: {sigma_t}"
+
+        a = mu_p[:, None, :] - mu_t[None, :, :]
+        assert not torch.any(torch.isnan(a)).item(), f"a: {a}"
 
         delta = (mu_p[:, None, :] - mu_t[None, :, :]) \
             .reshape(num_query, num_gt, 2) \
             .unsqueeze(-1)  # (m, n, 2, 1)
         sigma_t_inv = torch.inverse(sigma_t)  # (n, 2, 2)
+
+        b = delta.transpose(-1, -2).matmul(sigma_t_inv[None, :, :, :])
+        assert not torch.any(torch.isnan(b)).item(), f"b: {b}"
 
         term1 = delta.transpose(-1, -2).matmul(sigma_t_inv[None, :, :, :]).matmul(delta) \
             .reshape(mu_p.shape[0], mu_t.shape[0])
@@ -479,6 +490,10 @@ class KLDLossCost:
 
         dis = term1 + term2 - 2
         kl_dis = dis.clamp(min=1e-6)
+
+        assert not torch.any(torch.isnan(term1)).item(), f"term1: {term1}"
+        assert not torch.any(torch.isnan(term1)).item(), f"term1: {term2}"
+
         # The 1 is a constant that doesn't change the matching, so omitted.
         if self.fun == 'sqrt':
             kl_loss = - 1 / (self.tau + torch.sqrt(kl_dis))

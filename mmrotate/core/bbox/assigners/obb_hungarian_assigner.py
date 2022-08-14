@@ -116,7 +116,7 @@ class ObbHungarianAssigner(BaseAssigner):
                 num_gts, assigned_gt_inds, None, labels=assigned_labels)
         img_h, img_w, _ = img_meta['img_shape']
         factor = gt_bboxes.new_tensor([img_w, img_h, img_w,
-                                       img_h, math.pi/2]).unsqueeze(0)
+                                       img_h, math.pi / 2]).unsqueeze(0)
 
         # 2. compute the weighted costs
         # classification and bboxcost.
@@ -124,20 +124,19 @@ class ObbHungarianAssigner(BaseAssigner):
         # regression L1 cost
         normalize_gt_bboxes = gt_bboxes / factor
         reg_cost = self.reg_cost(bbox_pred, normalize_gt_bboxes)
-        # regression iou cost, defaultly giou is used in official DETR.
-        # bboxes = bbox_cxcywh_to_xyxy(bbox_pred) * factor
 
         bboxes = bbox_pred * factor
         if self.iou_cost is not None:
             iou_cost = self.iou_cost(bboxes, gt_bboxes)
             # weighted sum of above three costs
+            cost = cls_cost + reg_cost + iou_cost
         else:
-            iou_cost = torch.zeros_like(cls_cost)
+            cost = cls_cost + reg_cost
 
-        cost = cls_cost + reg_cost + iou_cost
+        assert not torch.any(torch.isnan(cost)).item(), f"cost: {cost}"
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
-        # match cost will not back propagate, cost is just used in matching
+        # match cost will not backpropagate, cost is just used in matching
         cost = cost.detach().cpu()
         if linear_sum_assignment is None:
             raise ImportError('Please run "pip install scipy" '
