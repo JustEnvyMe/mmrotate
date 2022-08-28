@@ -9,9 +9,9 @@ from mmcv.runner import force_fp32
 
 from mmdet.core import multi_apply
 from mmdet.models.utils.transformer import inverse_sigmoid
+from ..builder import ROTATED_HEADS, build_head
 from .rotated_detr_head import RotatedDETRHead
 
-from ..builder import ROTATED_HEADS, build_loss
 
 
 @ROTATED_HEADS.register_module()

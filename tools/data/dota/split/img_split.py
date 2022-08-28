@@ -19,6 +19,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from mmrotate.core.bbox import transforms
+
 Image.MAX_IMAGE_PIXELS = None
 
 try:
@@ -276,7 +278,7 @@ def get_window_obj(info, windows, iof_thr):
 
 
 def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
-                      padding_value, save_dir, anno_dir, img_ext):
+                      padding_value, save_dir, anno_dir, img_ext, logger):
     """
 
     Args:
@@ -343,6 +345,13 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
             else:
                 for idx in range(bboxes_num):
                     obj = patch_info['ann']
+                    # check
+                    poly = obj['bboxes'][idx]
+                    obb = transforms.poly2obb_np(poly, 'le90')
+                    if obb[2] < 1.0 or obb[3] < 1.0:
+                        logger.warm(f"error width and height: width: {obb[2]}, height: {obb[3]}")
+                        continue
+
                     outline = ' '.join(list(map(str, obj['bboxes'][idx])))
                     diffs = str(
                         obj['diffs'][idx]) if not obj['trunc'][idx] else '2'
@@ -381,7 +390,7 @@ def single_split(arguments, sizes, gaps, img_rate_thr, iof_thr, no_padding,
     window_anns = get_window_obj(info, windows, iof_thr)
     patch_infos = crop_and_save_img(info, windows, window_anns, img_dir,
                                     no_padding, padding_value, save_dir,
-                                    anno_dir, img_ext)
+                                    anno_dir, img_ext, logger)
     assert patch_infos
 
     lock.acquire()

@@ -97,4 +97,23 @@ detr与原先one/two stage检测器不同
 - detr预测bbox,是预测offset(dxdydwdh), 而rotated detr参照retinanet_gwd预测的是(xywh),导致wh与xy一开始是在一个数量级上的，导致差异。
 - detr iou_loss使用的是giou, rotated giou没有实现
 - giou是可以为负的
-- 
+  
+
+## 数据集位置错误
+
+```shell
+ File "/home/linewell/anaconda3/envs/openmmlab/lib/python3.8/site-packages/mmdet/datasets/samplers/group_sampler.py", line 36, in __iter__
+    indices = np.concatenate(indices)
+```
+
+## 缺少测试集
+
+```shell
+File "/work/workspace/wzw/mmrotate/mmrotate/core/evaluation/eval_map.py", line 169, in eval_rbbox_map
+num_classes = len(det_results[0])  # positive class num
+IndexError: list index out of range
+```
+
+确保训练集和测试集都在
+
+ 

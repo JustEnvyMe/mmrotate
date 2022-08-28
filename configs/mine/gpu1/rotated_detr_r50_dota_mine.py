@@ -1,4 +1,4 @@
-data_root = '../dataset/DOTA-v1.0/split_ms_dota1_0/'
+data_root = '../dataset/DOTA-v1.0/split_ss_dota1_0/'
 # data_root = '/media/alex/AC6A2BDB6A2BA0D6/alex_dataset/DOTA/DOTA-v1.0/split_ms_dota1_0/'
 
 img_norm_cfg = dict(
