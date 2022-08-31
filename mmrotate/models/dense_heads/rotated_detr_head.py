@@ -11,15 +11,16 @@ from mmcv.runner import force_fp32
 from mmdet.core import (bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh,
                         build_assigner, build_sampler, multi_apply,
                         reduce_mean)
-from mmdet.models import AnchorFreeHead
+from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
+
+from .. import RotatedAnchorFreeHead
 from mmdet.models.utils import build_transformer
 from ..builder import ROTATED_HEADS, build_loss
-from ... import obb2poly
 from ...core.bbox.transforms import obb2poly_le90
 
 
 @ROTATED_HEADS.register_module()
-class RotatedDETRHead(AnchorFreeHead):
+class RotatedDETRHead(BaseDenseHead):
     """Implements the Rotated DETR transformer head.
 
     See `paper: End-to-End Object Detection with Transformers
@@ -82,7 +83,7 @@ class RotatedDETRHead(AnchorFreeHead):
                  test_cfg=dict(max_per_img=100),
                  init_cfg=None,
                  **kwargs):
-        super(AnchorFreeHead, self).__init__(init_cfg)
+        super(RotatedAnchorFreeHead, self).__init__(init_cfg)
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
         # `AnchorFreeHead` is called.
@@ -134,7 +135,7 @@ class RotatedDETRHead(AnchorFreeHead):
         self.fp16_enabled = False
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
-        self.loss_iou = build_loss(loss_iou) if loss_iou is not None else None
+        self.loss_iou = build_loss(loss_iou) if loss_iou else None
 
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes
@@ -166,7 +167,7 @@ class RotatedDETRHead(AnchorFreeHead):
             self.act_cfg,
             dropout=0.0,
             add_residual=False)
-        self.fc_reg = Linear(self.embed_dims, 5)  # xywha
+        self.fc_reg = Linear(self.embed_dims, 4)  # todo xywha
         self.query_embedding = nn.Embedding(self.num_query, self.embed_dims)
 
     def init_weights(self):
@@ -324,17 +325,19 @@ class RotatedDETRHead(AnchorFreeHead):
         # loss from the last decoder layer
         loss_dict['loss_cls'] = losses_cls[-1]
         loss_dict['loss_bbox'] = losses_bbox[-1]
-        if losses_iou[-1]:
-            loss_dict['loss_iou'] = losses_iou[-1]
+        # if losses_iou[-1]:
+        #     loss_dict['loss_iou'] = losses_iou[-1]
+
+        loss_dict['loss_iou'] = losses_iou[-1]
         # loss from other decoder layers
-        # num_dec_layer = 0
-        # for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
-        #                                                losses_bbox[:-1],
-        #                                                losses_iou[:-1]):
-        #     loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
-        #     loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
-        #     loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
-        #     num_dec_layer += 1
+        num_dec_layer = 0
+        for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
+                                                       losses_bbox[:-1],
+                                                       losses_iou[:-1]):
+            loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
+            loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
+            loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
+            num_dec_layer += 1
         return loss_dict
 
     def loss_single(self,
@@ -418,7 +421,7 @@ class RotatedDETRHead(AnchorFreeHead):
             loss_iou = self.loss_iou(
                 bboxes, bboxes_gt, bbox_weights, avg_factor=num_total_pos)
         else:
-            loss_iou = None
+            loss_iou = torch.zeros_like(loss_cls)
 
         # regression L1 loss
         loss_bbox = self.loss_bbox(
@@ -688,7 +691,8 @@ class RotatedDETRHead(AnchorFreeHead):
         det_bboxes[:, 0::2].clamp_(min=0, max=img_shape[1])
         det_bboxes[:, 1::2].clamp_(min=0, max=img_shape[0])
         if rescale:
-            det_bboxes /= det_bboxes.new_tensor(scale_factor).repeat(2)
+            # det_bboxes /= det_bboxes.new_tensor(scale_factor).repeat(2)
+            det_bboxes /= det_bboxes.new_tensor(scale_factor)
         det_bboxes = torch.cat((det_bboxes, scores.unsqueeze(1)), -1)
 
         return det_bboxes, det_labels

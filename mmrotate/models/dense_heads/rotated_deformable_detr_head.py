@@ -167,7 +167,7 @@ class RotatedDeformableDETRHead(RotatedDETRHead):
             outputs_class = self.cls_branches[lvl](hs[lvl])
             tmp = self.reg_branches[lvl](hs[lvl])
             if reference.shape[-1] == 4:
-                tmp += reference
+                tmp[..., 4] += reference
             else:
                 assert reference.shape[-1] == 2
                 tmp[..., :2] += reference
@@ -259,17 +259,17 @@ class RotatedDeformableDETRHead(RotatedDETRHead):
 
         # loss from the last decoder layer
         loss_dict['loss_cls'] = losses_cls[-1]
-        loss_dict['loss_bbox'] = losses_bbox[-1]
         loss_dict['loss_iou'] = losses_iou[-1]
+        loss_dict['loss_bbox'] = losses_bbox[-1]
         # loss from other decoder layers
-        # num_dec_layer = 0
-        # for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
-        #                                                losses_bbox[:-1],
-        #                                                losses_iou[:-1]):
-        #     loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
-        #     loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
-        #     loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
-        #     num_dec_layer += 1
+        num_dec_layer = 0
+        for loss_cls_i, loss_bbox_i, loss_iou_i in zip(losses_cls[:-1],
+                                                       losses_bbox[:-1],
+                                                       losses_iou[:-1]):
+            loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
+            loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
+            loss_dict[f'd{num_dec_layer}.loss_iou'] = loss_iou_i
+            num_dec_layer += 1
         return loss_dict
 
     @force_fp32(apply_to=('all_cls_scores_list', 'all_bbox_preds_list'))
