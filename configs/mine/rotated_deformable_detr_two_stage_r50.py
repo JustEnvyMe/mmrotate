@@ -146,7 +146,7 @@ data = dict(
         pipeline=test_pipeline,
         version='le90'))
 
-evaluation = dict(interval=4, save_best='auto', metric='mAP')
+evaluation = dict(interval=1, save_best='auto', metric='mAP')
 optimizer = dict(
     type='AdamW',
     lr=1e-4,
@@ -158,7 +158,7 @@ optimizer = dict(
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 lr_config = dict(policy='step', step=[100])
-runner = dict(type='EpochBasedRunner', max_epochs=150)
+runner = dict(type='EpochBasedRunner', max_epochs=50)
 checkpoint_config = dict(interval=4, create_symlink=False)
 log_config = dict(
     interval=100,
@@ -173,6 +173,6 @@ resume_from = None
 workflow = [('train', 1)]
 opencv_num_threads = 0
 mp_start_method = 'fork'
-work_dir = './work_dirs/rotated_deformable_detr_r50'
+work_dir = './work_dirs/rotated_deformable_detr_two_stage_r50'
 auto_resume = False
 gpu_ids = [0]

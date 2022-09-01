@@ -13,7 +13,7 @@ from mmdet.core import (bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh,
                         reduce_mean)
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
 
-from .. import RotatedAnchorFreeHead
+# from .. import RotatedAnchorFreeHead
 from mmdet.models.utils import build_transformer
 from ..builder import ROTATED_HEADS, build_loss
 from ...core.bbox.transforms import obb2poly_le90
@@ -83,7 +83,7 @@ class RotatedDETRHead(BaseDenseHead):
                  test_cfg=dict(max_per_img=100),
                  init_cfg=None,
                  **kwargs):
-        super(RotatedAnchorFreeHead, self).__init__(init_cfg)
+        super(BaseDenseHead, self).__init__(init_cfg)
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
         # `AnchorFreeHead` is called.
@@ -684,8 +684,8 @@ class RotatedDETRHead(BaseDenseHead):
             bbox_pred = bbox_pred[bbox_index]
             det_labels = det_labels[bbox_index]
 
-        det_bboxes = obb2poly_le90(bbox_pred)
-        # det_bboxes = bbox_cxcywh_to_xyxy(bbox_pred)
+        # det_bboxes = obb2poly_le90(bbox_pred)
+        det_bboxes = bbox_cxcywh_to_xyxy(bbox_pred[..., :4])
         det_bboxes[:, 0::2] = det_bboxes[:, 0::2] * img_shape[1]
         det_bboxes[:, 1::2] = det_bboxes[:, 1::2] * img_shape[0]
         det_bboxes[:, 0::2].clamp_(min=0, max=img_shape[1])

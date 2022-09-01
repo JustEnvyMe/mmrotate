@@ -167,7 +167,7 @@ class RotatedDeformableDETRHead(RotatedDETRHead):
             outputs_class = self.cls_branches[lvl](hs[lvl])
             tmp = self.reg_branches[lvl](hs[lvl])
             if reference.shape[-1] == 4:
-                tmp[..., 4] += reference
+                tmp[..., :4] += reference
             else:
                 assert reference.shape[-1] == 2
                 tmp[..., :2] += reference
@@ -323,3 +323,78 @@ class RotatedDeformableDETRHead(RotatedDETRHead):
                                                 rescale)
             result_list.append(proposals)
         return result_list
+
+    def _get_bboxes_single(self,
+                           cls_score,
+                           bbox_pred,
+                           img_shape,
+                           scale_factor,
+                           rescale=False):
+        """Transform outputs from the last decoder layer into bbox predictions
+        for each image.
+
+        Args:
+            cls_score (Tensor): Box score logits from the last decoder layer
+                for each image. Shape [num_query, cls_out_channels].
+            bbox_pred (Tensor): Sigmoid outputs from the last decoder layer
+                for each image, with coordinate format (cx, cy, w, h) and
+                shape [num_query, 4].
+            img_shape (tuple[int]): Shape of input image, (height, width, 3).
+            scale_factor (ndarray, optional): Scale factor of the image arange
+                as (w_scale, h_scale, w_scale, h_scale).
+            rescale (bool, optional): If True, return boxes in original image
+                space. Default False.
+
+        Returns:
+            tuple[Tensor]: Results of detected bboxes and labels.
+
+                - det_bboxes: Predicted bboxes with shape [num_query, 5], \
+                    where the first 4 columns are bounding box positions \
+                    (tl_x, tl_y, br_x, br_y) and the 5-th column are scores \
+                    between 0 and 1.
+                - det_labels: Predicted labels of the corresponding box with \
+                    shape [num_query].
+        """
+        assert len(cls_score) == len(bbox_pred)
+        max_per_img = self.test_cfg.get('max_per_img', self.num_query)
+        # exclude background
+        if self.loss_cls.use_sigmoid:
+            cls_score = cls_score.sigmoid()
+            scores, indexes = cls_score.view(-1).topk(max_per_img)
+            det_labels = indexes % self.num_classes
+            bbox_index = indexes // self.num_classes
+            bbox_pred = bbox_pred[bbox_index]
+        else:
+            scores, det_labels = F.softmax(cls_score, dim=-1)[..., :-1].max(-1)
+            scores, bbox_index = scores.topk(max_per_img)
+            bbox_pred = bbox_pred[bbox_index]
+            det_labels = det_labels[bbox_index]
+
+        bbox_pred[..., :4] = bbox_pred[..., :4] * img_shape[1]
+        if rescale:
+            bbox_pred[:, :4] /= bbox_pred[:, :4].new_tensor(scale_factor)
+        det_bboxes = torch.cat((bbox_pred, scores.unsqueeze(1)), -1)
+
+        return det_bboxes, det_labels
+
+    def simple_test_bboxes(self, feats, img_metas, rescale=False):
+        """Test det bboxes without test-time augmentation.
+
+        Args:
+            feats (tuple[torch.Tensor]): Multi-level features from the
+                upstream network, each is a 4D-tensor.
+            img_metas (list[dict]): List of image information.
+            rescale (bool, optional): Whether to rescale the results.
+                Defaults to False.
+
+        Returns:
+            list[tuple[Tensor, Tensor]]: Each item in result_list is 2-tuple.
+                The first item is ``bboxes`` with shape (n, 5),
+                where 5 represent (tl_x, tl_y, br_x, br_y, score).
+                The shape of the second tensor in the tuple is ``labels``
+                with shape (n,)
+        """
+        # forward of this head requires img_metas
+        outs = self.forward(feats, img_metas)
+        results_list = self.get_bboxes(*outs, img_metas, rescale=rescale)
+        return results_list
